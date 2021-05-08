@@ -242,6 +242,8 @@ class AwaitableQuery(Generic[MODEL]):
 
     def sql(self) -> str:
         """Return the actual SQL."""
+        if self._db is None:
+            self._db = self._choose_db()  # type: ignore
         self._make_query()
         return self.query.get_sql()
 
@@ -276,6 +278,8 @@ class QuerySet(AwaitableQuery[MODEL]):
         "_select_for_update_of",
         "_select_related",
         "_select_related_idx",
+        "_use_indexes",
+        "_force_indexes",
     )
 
     def __init__(self, model: Type[MODEL]) -> None:
@@ -303,6 +307,8 @@ class QuerySet(AwaitableQuery[MODEL]):
         self._select_related_idx: List[
             Tuple["Type[Model]", int, str, "Type[Model]"]
         ] = []  # format with: model,idx,model_name,parent_model
+        self._force_indexes: Set[str] = set()
+        self._use_indexes: Set[str] = set()
 
     def _clone(self) -> "QuerySet[MODEL]":
         queryset = QuerySet.__new__(QuerySet)
@@ -333,6 +339,8 @@ class QuerySet(AwaitableQuery[MODEL]):
         queryset._select_for_update_of = self._select_for_update_of
         queryset._select_related = self._select_related
         queryset._select_related_idx = self._select_related_idx
+        queryset._force_indexes = self._force_indexes
+        queryset._use_indexes = self._use_indexes
         return queryset
 
     def _filter_or_exclude(self, *args: Q, negate: bool, **kwargs: Any) -> "QuerySet[MODEL]":
@@ -454,7 +462,7 @@ class QuerySet(AwaitableQuery[MODEL]):
             return queryset
         return self
 
-    def annotate(self, **kwargs: Function) -> "QuerySet[MODEL]":
+    def annotate(self, **kwargs: Union[Function, Term]) -> "QuerySet[MODEL]":
         """
         Annotate result with aggregation or function result.
 
@@ -564,6 +572,8 @@ class QuerySet(AwaitableQuery[MODEL]):
             q_objects=self._q_objects,
             annotations=self._annotations,
             custom_filters=self._custom_filters,
+            limit=self._limit,
+            orderings=self._orderings,
         )
 
     def update(self, **kwargs: Any) -> "UpdateQuery":
@@ -585,6 +595,8 @@ class QuerySet(AwaitableQuery[MODEL]):
             q_objects=self._q_objects,
             annotations=self._annotations,
             custom_filters=self._custom_filters,
+            limit=self._limit,
+            orderings=self._orderings,
         )
 
     def count(self) -> "CountQuery":
@@ -682,6 +694,29 @@ class QuerySet(AwaitableQuery[MODEL]):
         for field in fields:
             queryset._select_related.add(field)
         return queryset
+
+    def force_index(self, *index_names: str) -> "QuerySet[MODEL]":
+        """
+        The FORCE INDEX hint acts like USE INDEX (index_list),
+        with the addition that a table scan is assumed to be very expensive.
+        """
+        if self.capabilities.support_index_hint:
+            queryset = self._clone()
+            for index_name in index_names:
+                queryset._force_indexes.add(index_name)
+            return queryset
+        return self
+
+    def use_index(self, *index_names: str) -> "QuerySet[MODEL]":
+        """
+        The USE INDEX (index_list) hint tells MySQL to use only one of the named indexes to find rows in the table.
+        """
+        if self.capabilities.support_index_hint:
+            queryset = self._clone()
+            for index_name in index_names:
+                queryset._use_indexes.add(index_name)
+            return queryset
+        return self
 
     def prefetch_related(self, *args: Union[str, Prefetch]) -> "QuerySet[MODEL]":
         """
@@ -821,6 +856,10 @@ class QuerySet(AwaitableQuery[MODEL]):
                     field=field_split[0],
                     forwarded_fields="__".join(field_split[1:]) if len(field_split) > 1 else "",
                 )
+        if self._force_indexes:
+            self.query = self.query.force_index(*self._force_indexes)
+        if self._use_indexes:
+            self.query = self.query.use_index(*self._use_indexes)
 
     def __await__(self) -> Generator[Any, None, List[MODEL]]:
         if self._db is None:
@@ -852,7 +891,14 @@ class QuerySet(AwaitableQuery[MODEL]):
 
 
 class UpdateQuery(AwaitableQuery):
-    __slots__ = ("update_kwargs", "q_objects", "annotations", "custom_filters")
+    __slots__ = (
+        "update_kwargs",
+        "q_objects",
+        "annotations",
+        "custom_filters",
+        "orderings",
+        "limit",
+    )
 
     def __init__(
         self,
@@ -862,6 +908,8 @@ class UpdateQuery(AwaitableQuery):
         q_objects: List[Q],
         annotations: Dict[str, Any],
         custom_filters: Dict[str, Dict[str, Any]],
+        limit: Optional[int],
+        orderings: List[Tuple[str, str]],
     ) -> None:
         super().__init__(model)
         self.update_kwargs = update_kwargs
@@ -869,10 +917,16 @@ class UpdateQuery(AwaitableQuery):
         self.annotations = annotations
         self.custom_filters = custom_filters
         self._db = db
+        self.limit = limit
+        self.orderings = orderings
 
     def _make_query(self) -> None:
         table = self.model._meta.basetable
         self.query = self._db.query_class.update(table)
+        if self.capabilities.support_update_limit_order_by and self.limit:
+            self.query._limit = self.limit
+            self.resolve_ordering(self.model, table, self.orderings, self.annotations)
+
         self.resolve_filters(
             model=self.model,
             q_objects=self.q_objects,
@@ -919,7 +973,7 @@ class UpdateQuery(AwaitableQuery):
 
 
 class DeleteQuery(AwaitableQuery):
-    __slots__ = ("q_objects", "annotations", "custom_filters")
+    __slots__ = ("q_objects", "annotations", "custom_filters", "orderings", "limit")
 
     def __init__(
         self,
@@ -928,15 +982,24 @@ class DeleteQuery(AwaitableQuery):
         q_objects: List[Q],
         annotations: Dict[str, Any],
         custom_filters: Dict[str, Dict[str, Any]],
+        limit: Optional[int],
+        orderings: List[Tuple[str, str]],
     ) -> None:
         super().__init__(model)
         self.q_objects = q_objects
         self.annotations = annotations
         self.custom_filters = custom_filters
         self._db = db
+        self.limit = limit
+        self.orderings = orderings
 
     def _make_query(self) -> None:
         self.query = copy(self.model._meta.basequery)
+        if self.capabilities.support_update_limit_order_by and self.limit:
+            self.query._limit = self.limit
+            self.resolve_ordering(
+                self.model, self.model._meta.basetable, self.orderings, self.annotations
+            )
         self.resolve_filters(
             model=self.model,
             q_objects=self.q_objects,

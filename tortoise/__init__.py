@@ -56,7 +56,7 @@ class Tortoise:
 
         :param serializable:
             ``False`` if you want raw python objects,
-            ``True`` for JSON-serialisable data. (Defaults to ``True``)
+            ``True`` for JSON-serializable data. (Defaults to ``True``)
 
         See :meth:`tortoise.models.Model.describe`
 
@@ -111,7 +111,7 @@ class Tortoise:
         def get_related_model(related_app_name: str, related_model_name: str) -> Type["Model"]:
             """
             Test, if app and model really exist. Throws a ConfigurationError with a hopefully
-            helpful message. If successfull, returns the requested model.
+            helpful message. If successful, returns the requested model.
 
             :raises ConfigurationError: If no such app exists.
             """
@@ -128,7 +128,7 @@ class Tortoise:
         def split_reference(reference: str) -> Tuple[str, str]:
             """
             Test, if reference follow the official naming conventions. Throws a
-            ConfigurationError with a hopefully helpful message. If successfull,
+            ConfigurationError with a hopefully helpful message. If successful,
             returns the app and the model name.
 
             :raises ConfigurationError: If no model reference is invalid.
@@ -154,7 +154,7 @@ class Tortoise:
                     model._meta.db_table = model.__name__.lower()
 
                 # TODO: refactor to share logic between FK & O2O
-                for field in model._meta.fk_fields:
+                for field in sorted(model._meta.fk_fields):
                     fk_object = cast(ForeignKeyFieldInstance, model._meta.fields_map[field])
                     reference = fk_object.model_name
                     related_app_name, related_model_name = split_reference(reference)
@@ -708,4 +708,4 @@ def run_async(coro: Coroutine) -> None:
         loop.run_until_complete(Tortoise.close_connections())
 
 
-__version__ = "0.17.1"
+__version__ = "0.17.3"

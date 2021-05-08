@@ -9,6 +9,24 @@ Changelog
 
 0.17
 ====
+0.17.3
+------
+- Fix duplicates when using custom through association class on M2M relations
+- Fix `update_or_create` and `get_or_create`. (#721)
+- Fix `refresh_from_db` without fields pass. (#734)
+- Make `update` query work with `limit` and `order_by`. (#748)
+
+0.17.2
+------
+- Add more `index` types.
+- Add `force_index`, `use_index` to `queryset`.
+- Fix `F` in update error with `update_fields`.
+- Make `delete` query work with `limit` and `order_by`. (#697)
+- Filter backward FK fields with `IS NULL` and `NOT IS NULL` filters (#700)
+- Add `select_for_update` in `update_or_create`. (#702)
+- Add `Model.select_for_update`.
+- Add `__search` full text search to queryset.
+
 0.17.1
 ------
 - Fix type for modules.
