@@ -1,14 +1,11 @@
 import logging
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, List, Set, Type, cast
+from typing import TYPE_CHECKING, Any, List, Set, Type
 
 from tortoise.exceptions import ConfigurationError
-from tortoise.fields import JSONField, TextField, UUIDField
-from tortoise.indexes import Index
 
 if TYPE_CHECKING:  # pragma: nocoverage
     from tortoise.backends.base.client import BaseDBAsyncClient
-    from tortoise.fields.relational import ForeignKeyFieldInstance, ManyToManyFieldInstance  # noqa
     from tortoise.models import Model
 
 # pylint: disable=R0201
@@ -135,13 +132,10 @@ class BaseSchemaGenerator:
         # Hash a set of string values and get a digest of the given length.
         return sha256(";".join(args).encode("utf-8")).hexdigest()[:length]
 
-    def _generate_index_name(
-        self, prefix: str, model: "Type[Model]", field_names: List[str]
-    ) -> str:
+    def _generate_index_name(self, prefix: str, table_name: str, field_names: List[str]) -> str:
         # NOTE: for compatibility, index name should not be longer than 30
         # characters (Oracle limit).
         # That's why we slice some of the strings here.
-        table_name = model._meta.db_table
         index_name = "{}_{}_{}_{}".format(
             prefix,
             table_name[:11],
@@ -163,21 +157,49 @@ class BaseSchemaGenerator:
         )
         return index_name
 
-    def _get_index_sql(self, model: "Type[Model]", field_names: List[str], safe: bool) -> str:
+    def _get_index_sql(self, table_name: str, field_names: List[str], safe: bool) -> str:
         return self.INDEX_CREATE_TEMPLATE.format(
             exists="IF NOT EXISTS " if safe else "",
-            index_name=self._generate_index_name("idx", model, field_names),
-            table_name=model._meta.db_table,
+            index_name=self._generate_index_name("idx", table_name, field_names),
+            table_name=table_name,
             fields=", ".join([self.quote(f) for f in field_names]),
         )
 
-    def _get_unique_constraint_sql(self, model: "Type[Model]", field_names: List[str]) -> str:
+    def _get_unique_constraint_sql(self, table_name: str, field_names: List[str]) -> str:
         return self.UNIQUE_CONSTRAINT_CREATE_TEMPLATE.format(
-            index_name=self._generate_index_name("uid", model, field_names),
+            index_name=self._generate_index_name("uid", table_name, field_names),
             fields=", ".join([self.quote(f) for f in field_names]),
         )
 
-    def _get_table_sql(self, model: "Type[Model]", safe: bool = True) -> dict:
+    def _get_default(self, table_name, field_describe: dict):
+        default: str = field_describe.get("default")
+        auto_now_add = field_describe.get("auto_now_add", False)
+        auto_now = field_describe.get("auto_now", False)
+        column_name = field_describe["db_column"]
+        if default is not None or auto_now or auto_now_add:
+            if default.startswith("<function ") or field_describe["field_type"] in (
+                "UUIDField",
+                "TextField",
+                "JSONField",
+            ):
+                default = ""
+            else:
+                try:
+                    default = self._column_default_generator(
+                        table_name,
+                        column_name,
+                        self._escape_default_value(default),
+                        auto_now_add,
+                        auto_now,
+                    )
+                except NotImplementedError:
+                    default = ""
+        else:
+            default = ""
+
+        return default
+
+    def _get_table_sql(self, table_describe: dict, safe: bool = True) -> dict:
         fields_to_create = []
         fields_with_index = []
         m2m_tables_for_create = []
@@ -185,141 +207,120 @@ class BaseSchemaGenerator:
         models_to_create: "List[Type[Model]]" = []
 
         self._get_models_to_create(models_to_create)
-        models_tables = [model._meta.db_table for model in models_to_create]
-        for field_name, column_name in model._meta.fields_db_projection.items():
-            field_object = model._meta.fields_map[field_name]
-            comment = (
+        models_tables = [i._meta.db_table for i in models_to_create]
+        table_name = table_describe["table"]
+
+        def get_column_comment(column_name, description, table_name):
+            return (
                 self._column_comment_generator(
-                    table=model._meta.db_table, column=column_name, comment=field_object.description
+                    # db_table:str,
+                    table=table_name,
+                    column=column_name,
+                    comment=description,
                 )
-                if field_object.description
+                if description
                 else ""
             )
 
-            default = field_object.default
-            auto_now_add = getattr(field_object, "auto_now_add", False)
-            auto_now = getattr(field_object, "auto_now", False)
-            if default is not None or auto_now or auto_now_add:
-                if callable(default) or isinstance(field_object, (UUIDField, TextField, JSONField)):
-                    default = ""
-                else:
-                    default = field_object.to_db_value(default, model)
-                    try:
-                        default = self._column_default_generator(
-                            model._meta.db_table,
-                            column_name,
-                            self._escape_default_value(default),
-                            auto_now_add,
-                            auto_now,
-                        )
-                    except NotImplementedError:
-                        default = ""
-            else:
-                default = ""
+        def _get_generated_sql(field_describe: dict, dialect: str):
+            return field_describe["generated_sql"][dialect]
 
-            # TODO: PK generation needs to move out of schema generator.
-            if field_object.pk:
-                if field_object.generated:
-                    generated_sql = field_object.get_for_dialect(self.DIALECT, "GENERATED_SQL")
-                    if generated_sql:  # pragma: nobranch
-                        fields_to_create.append(
-                            self.GENERATED_PK_TEMPLATE.format(
-                                field_name=column_name,
-                                generated_sql=generated_sql,
-                                comment=comment,
-                            )
-                        )
-                        continue
-
-            nullable = "NOT NULL" if not field_object.null else ""
-            unique = "UNIQUE" if field_object.unique else ""
-
-            if getattr(field_object, "reference", None):
-                reference = cast("ForeignKeyFieldInstance", field_object.reference)
-                comment = (
-                    self._column_comment_generator(
-                        table=model._meta.db_table,
-                        column=column_name,
-                        comment=reference.description,
+        # add pk field.
+        pk_describle = table_describe["pk_field"]
+        data_fields = table_describe["data_fields"]
+        fk_fields = table_describe["fk_fields"]
+        if pk_describle.get("generated"):
+            generated_sql = _get_generated_sql(
+                pk_describle,
+                self.DIALECT,
+            )
+            if generated_sql:  # pragma: nobranch
+                pk_name = pk_describle["name"]
+                pk_column_name = pk_describle["db_column"]
+                pk_comment = get_column_comment(pk_name, pk_describle["description"], table_name)
+                fields_to_create.append(
+                    self.GENERATED_PK_TEMPLATE.format(
+                        column_name=pk_column_name,
+                        generated_sql=generated_sql,
+                        comment=pk_comment,
                     )
-                    if reference.description
-                    else ""
                 )
+        else:
+            pk_describle["is_pk"] = True
+            data_fields.append(pk_describle)
+        for field_describe in table_describe["data_fields"]:
+            column_name = field_describe["db_column"]
+            comment = get_column_comment(column_name, field_describe, table_name)
+            default = self._get_default(table_name, field_describe)
 
-                to_field_name = reference.to_field_instance.source_field
-                if not to_field_name:
-                    to_field_name = reference.to_field_instance.model_field_name
+            nullable = "NOT NULL" if not field_describe.get("nullable", "") else ""
+            unique = "UNIQUE" if field_describe.get("unique") else ""
 
-                field_creation_string = self._create_string(
-                    db_column=column_name,
-                    field_type=field_object.get_for_dialect(self.DIALECT, "SQL_TYPE"),
-                    nullable=nullable,
-                    unique=unique,
-                    is_primary_key=field_object.pk,
-                    comment="",
-                    default=default,
-                ) + (
-                    self._create_fk_string(
-                        constraint_name=self._generate_fk_name(
-                            model._meta.db_table,
-                            column_name,
-                            reference.related_model._meta.db_table,
-                            to_field_name,
-                        ),
+            for fk_field in fk_fields:
+                if fk_field["raw_field"] == column_name:
+                    comment = get_column_comment(
+                        column_name, field_describe["description"], table_name
+                    )
+                    to_field_name = fk_field["raw_field"]
+
+                    field_creation_string = self._create_string(
                         db_column=column_name,
-                        table=reference.related_model._meta.db_table,
-                        field=to_field_name,
-                        on_delete=reference.on_delete,
-                        comment=comment,
+                        field_type=field_describe["db_field_types"][""],
+                        nullable=nullable,
+                        unique=unique,
+                        is_primary_key=field_describe.get("is_pk", False),
+                        comment="",
+                        default=default,
+                    ) + (
+                        self._create_fk_string(
+                            constraint_name=self._generate_fk_name(
+                                table_name,
+                                column_name,
+                                fk_field["reference_table"],
+                                to_field_name,
+                            ),
+                            db_column=column_name,
+                            table=fk_field["reference_table"],
+                            field=to_field_name,
+                            on_delete=fk_field["on_delete"],
+                            comment=comment,
+                        )
+                        if fk_field["db_constraint"]
+                        else ""
                     )
-                    if reference.db_constraint
-                    else ""
-                )
-                references.add(reference.related_model._meta.db_table)
+                    references.add(fk_field["reference_table"])
+                    break
             else:
                 field_creation_string = self._create_string(
                     db_column=column_name,
-                    field_type=field_object.get_for_dialect(self.DIALECT, "SQL_TYPE"),
+                    field_type=field_describe["db_field_types"][""],
                     nullable=nullable,
                     unique=unique,
-                    is_primary_key=field_object.pk,
+                    is_primary_key=field_describe.get("is_pk", False),
                     comment=comment,
                     default=default,
                 )
 
             fields_to_create.append(field_creation_string)
 
-            if field_object.index and not field_object.pk:
+            if field_describe["indexed"] and not field_describe.get("is_pk"):
                 fields_with_index.append(column_name)
 
-        if model._meta.unique_together:
-            for unique_together_list in model._meta.unique_together:
-                unique_together_to_create = []
-
-                for field in unique_together_list:
-                    field_object = model._meta.fields_map[field]
-                    unique_together_to_create.append(field_object.source_field or field)
-
+        if table_describe["unique_together"]:
+            for unique_together_to_create in table_describe["unique_together"]:
                 fields_to_create.append(
-                    self._get_unique_constraint_sql(model, unique_together_to_create)
+                    self._get_unique_constraint_sql(table_name, unique_together_to_create)
                 )
 
         # Indexes.
         _indexes = [
-            self._get_index_sql(model, [field_name], safe=safe) for field_name in fields_with_index
+            self._get_index_sql(table_name, [field_name], safe=safe)
+            for field_name in fields_with_index
         ]
 
-        if model._meta.indexes:
-            for indexes_list in model._meta.indexes:
-                if not isinstance(indexes_list, Index):
-                    indexes_to_create = []
-                    for field in indexes_list:
-                        field_object = model._meta.fields_map[field]
-                        indexes_to_create.append(field_object.source_field or field)
-
-                    _indexes.append(self._get_index_sql(model, indexes_to_create, safe=safe))
-                else:
-                    _indexes.append(indexes_list.get_sql(self, model, safe))
+        if table_describe["indexes"]:
+            for indexes_to_create in table_describe["indexes"]:
+                _indexes.append(self._get_index_sql(table_name, indexes_to_create, safe=safe))
 
         field_indexes_sqls = [val for val in list(dict.fromkeys(_indexes)) if val]
 
@@ -327,66 +328,61 @@ class BaseSchemaGenerator:
 
         table_fields_string = "\n    {}\n".format(",\n    ".join(fields_to_create))
         table_comment = (
-            self._table_comment_generator(
-                table=model._meta.db_table, comment=model._meta.table_description
-            )
-            if model._meta.table_description
+            self._table_comment_generator(table=table_name, comment=table_describe["description"])
+            if table_describe["description"]
             else ""
         )
 
         table_create_string = self.TABLE_CREATE_TEMPLATE.format(
             exists="IF NOT EXISTS " if safe else "",
-            table_name=model._meta.db_table,
+            table_name=table_name,
             fields=table_fields_string,
             comment=table_comment,
-            extra=self._table_generate_extra(table=model._meta.db_table),
+            extra=self._table_generate_extra(table=table_name),
         )
 
         table_create_string = "\n".join([table_create_string, *field_indexes_sqls])
 
         table_create_string += self._post_table_hook()
 
-        for m2m_field in model._meta.m2m_fields:
-            field_object = cast("ManyToManyFieldInstance", model._meta.fields_map[m2m_field])
-            if field_object._generated or field_object.through in models_tables:
+        for m2m_field in table_describe["m2m_fields"]:
+            if m2m_field["_generated"] or m2m_field["through"] in models_tables:
                 continue
             m2m_create_string = self.M2M_TABLE_TEMPLATE.format(
                 exists="IF NOT EXISTS " if safe else "",
-                table_name=field_object.through,
+                table_name=m2m_field["through"],
                 backward_fk=self._create_fk_string(
                     "",
-                    field_object.backward_key,
-                    model._meta.db_table,
-                    model._meta.db_pk_column,
-                    field_object.on_delete,
+                    m2m_field["backward_key"],
+                    table_name,
+                    table_name,
+                    m2m_field["on_delete"],
                     "",
                 )
-                if field_object.db_constraint
+                if m2m_field["db_constraint"]
                 else "",
                 forward_fk=self._create_fk_string(
                     "",
-                    field_object.forward_key,
-                    field_object.related_model._meta.db_table,
-                    field_object.related_model._meta.db_pk_column,
-                    field_object.on_delete,
+                    m2m_field["forward_key"],
+                    m2m_field["related_table_name"],
+                    m2m_field["related_table_pk_name"],
+                    m2m_field["on_delete"],
                     "",
                 )
-                if field_object.db_constraint
+                if m2m_field["db_constraint"]
                 else "",
-                backward_key=field_object.backward_key,
-                backward_type=model._meta.pk.get_for_dialect(self.DIALECT, "SQL_TYPE"),
-                forward_key=field_object.forward_key,
-                forward_type=field_object.related_model._meta.pk.get_for_dialect(
-                    self.DIALECT, "SQL_TYPE"
-                ),
-                extra=self._table_generate_extra(table=field_object.through),
+                backward_key=m2m_field["backward_key"],
+                backward_type=m2m_field["backward_type"].get(self.DIALECT),
+                forward_key=m2m_field["forward_key"],
+                forward_type=m2m_field["forward_type"].get(self.DIALECT),
+                extra=self._table_generate_extra(table=m2m_field["through"]),
                 comment=self._table_comment_generator(
-                    table=field_object.through, comment=field_object.description
+                    table=m2m_field["through"], comment=m2m_field["description"]
                 )
-                if field_object.description
+                if m2m_field["description"]
                 else "",
             )
-            if not field_object.db_constraint:
+            if not m2m_field["db_constraint"]:
                 m2m_create_string = m2m_create_string.replace(
                     """,
     ,
@@ -397,8 +393,7 @@ class BaseSchemaGenerator:
             m2m_tables_for_create.append(m2m_create_string)
 
         return {
-            "table": model._meta.db_table,
-            "model": model,
+            "table": table_name,
             "table_creation_string": table_create_string,
             "references": references,
             "m2m_tables": m2m_tables_for_create,
@@ -420,7 +415,7 @@ class BaseSchemaGenerator:
 
         tables_to_create = []
         for model in models_to_create:
-            tables_to_create.append(self._get_table_sql(model, safe))
+            tables_to_create.append(self._get_table_sql(model.describe(), safe))
 
         tables_to_create_count = len(tables_to_create)
 
