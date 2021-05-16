@@ -1313,6 +1313,7 @@ class Model(metaclass=ModelMeta):
                     "docstring":            str     # Model docstring (nullable)
                     "unique_together":      [...]   # List of List containing field names that
                                                     #  are unique together
+                    "indexes":              [...]   # List of indexs in Meta.
                     "pk_field":             {...}   # Primary key field
                     "data_fields":          [...]   # Data fields
                     "fk_fields":            [...]   # Foreign Key fields FROM this model
@@ -1332,6 +1333,7 @@ class Model(metaclass=ModelMeta):
             "description": cls._meta.table_description or None,
             "docstring": inspect.cleandoc(cls.__doc__ or "") or None,
             "unique_together": cls._meta.unique_together or [],
+            "indexes": cls._meta.indexes or [],
             "pk_field": cls._meta.fields_map[cls._meta.pk_attr].describe(serializable),
             "data_fields": [
                 field.describe(serializable)
