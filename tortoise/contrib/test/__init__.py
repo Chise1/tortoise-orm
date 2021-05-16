@@ -359,6 +359,7 @@ class TruncationTestCase(SimpleTestCase):
         for app in Tortoise.apps.values():
             for model in app.values():
                 quote_char = model._meta.db.query_class._builder().QUOTE_CHAR
+                print(f"DELETE FROM {quote_char}{model._meta.db_table}{quote_char}")
                 await model._meta.db.execute_script(  # nosec
                     f"DELETE FROM {quote_char}{model._meta.db_table}{quote_char}"
                 )
