@@ -171,7 +171,9 @@ class ManyToManyRelation(ReverseRelation[MODEL]):
     """
 
     def __init__(self, instance: "Model", m2m_field: "ManyToManyFieldInstance") -> None:
-        super().__init__(m2m_field.related_model, m2m_field.related_name, instance, "pk")  # type: ignore
+        super().__init__(
+            m2m_field.related_model, m2m_field.related_name, instance, "pk"
+        )  # type: ignore
         self.field = m2m_field
         self.instance = instance
 
@@ -311,6 +313,7 @@ class RelationalField(Field):
     def describe(self, serializable: bool) -> dict:
         desc = super().describe(serializable)
         del desc["db_column"]
+        desc["db_constraint"] = self.db_constraint
         return desc
 
 
@@ -337,6 +340,8 @@ class ForeignKeyFieldInstance(RelationalField):
         desc = super().describe(serializable)
         desc["raw_field"] = self.source_field
         desc["on_delete"] = self.on_delete
+        desc["reference_table"] = self.related_model._meta.db_table
+        desc["db_constraint"] = self.db_constraint
         return desc
 
 
@@ -409,6 +414,19 @@ class ManyToManyFieldInstance(RelationalField):
         desc["through"] = self.through
         desc["on_delete"] = self.on_delete
         desc["_generated"] = self._generated
+        desc["related_table_name"] = self.related_model._meta.db_table
+        desc["related_table_pk_name"] = self.related_model._meta.db_pk_column
+        desc["backward_type"] = {
+            "sqlite": self.model._meta.pk.get_for_dialect("sqlite", "SQL_TYPE"),
+            "mysql": self.model._meta.pk.get_for_dialect("mysql", "SQL_TYPE"),
+            "asyncpg": self.model._meta.pk.get_for_dialect("asyncpg", "SQL_TYPE"),
+        }
+        desc["forward_type"] = {
+            "sqlite": self.related_model._meta.pk.get_for_dialect("sqlite", "SQL_TYPE"),
+            "mysql": self.related_model._meta.pk.get_for_dialect("mysql", "SQL_TYPE"),
+            "asyncpg": self.related_model._meta.pk.get_for_dialect("asyncpg", "SQL_TYPE"),
+        }
+
         return desc
 
 
