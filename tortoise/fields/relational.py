@@ -342,6 +342,9 @@ class ForeignKeyFieldInstance(RelationalField):
         desc["on_delete"] = self.on_delete
         desc["reference_table"] = self.related_model._meta.db_table
         desc["db_constraint"] = self.db_constraint
+        desc["to_field_name"] = (
+            self.related_model._meta.db_pk_column if self.to_field == "id" else self.to_field
+        )
         return desc
 
 
