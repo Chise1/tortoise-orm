@@ -267,7 +267,7 @@ class BaseSchemaGenerator:
 
                     field_creation_string = self._create_string(
                         db_column=column_name,
-                        field_type=field_describe["db_field_types"][""],
+                        field_type=field_describe["db_field_types"].get(self.DIALECT,field_describe["db_field_types"][""]),
                         nullable=nullable,
                         unique=unique,
                         is_primary_key=field_describe.get("is_pk", False),
@@ -295,7 +295,7 @@ class BaseSchemaGenerator:
             else:
                 field_creation_string = self._create_string(
                     db_column=column_name,
-                    field_type=field_describe["db_field_types"][""],
+                    field_type=field_describe["db_field_types"].get(self.DIALECT,field_describe["db_field_types"][""]),
                     nullable=nullable,
                     unique=unique,
                     is_primary_key=field_describe.get("is_pk", False),
