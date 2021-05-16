@@ -1,3 +1,4 @@
+import json
 import logging
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, List, Set, Type
@@ -177,13 +178,14 @@ class BaseSchemaGenerator:
         auto_now = field_describe.get("auto_now", False)
         column_name = field_describe["db_column"]
         if default is not None or auto_now or auto_now_add:
-            if default.startswith("<function ") or field_describe["field_type"] in (
+            if (isinstance(default,str) and default.startswith("<function ")) or field_describe["field_type"] in (
                 "UUIDField",
                 "TextField",
                 "JSONField",
             ):
                 default = ""
             else:
+                print("default:",default)
                 try:
                     default = self._column_default_generator(
                         table_name,
@@ -240,7 +242,7 @@ class BaseSchemaGenerator:
                 pk_comment = get_column_comment(pk_name, pk_describle["description"], table_name)
                 fields_to_create.append(
                     self.GENERATED_PK_TEMPLATE.format(
-                        column_name=pk_column_name,
+                        field_name=pk_column_name,
                         generated_sql=generated_sql,
                         comment=pk_comment,
                     )
@@ -250,7 +252,7 @@ class BaseSchemaGenerator:
             data_fields.append(pk_describle)
         for field_describe in table_describe["data_fields"]:
             column_name = field_describe["db_column"]
-            comment = get_column_comment(column_name, field_describe, table_name)
+            comment = get_column_comment(column_name, field_describe['description'], table_name)
             default = self._get_default(table_name, field_describe)
 
             nullable = "NOT NULL" if not field_describe.get("nullable", "") else ""
@@ -355,7 +357,7 @@ class BaseSchemaGenerator:
                     "",
                     m2m_field["backward_key"],
                     table_name,
-                    table_name,
+                    table_describe['pk_field']['db_column'],
                     m2m_field["on_delete"],
                     "",
                 )
@@ -415,7 +417,7 @@ class BaseSchemaGenerator:
 
         tables_to_create = []
         for model in models_to_create:
-            tables_to_create.append(self._get_table_sql(model.describe(), safe))
+            tables_to_create.append(self._get_table_sql(json.loads(json.dumps(model.describe())), safe))# clear callable func
 
         tables_to_create_count = len(tables_to_create)
 
@@ -442,5 +444,5 @@ class BaseSchemaGenerator:
         return schema_creation_string
 
     async def generate_from_string(self, creation_string: str) -> None:
-        # print(creation_string)
+        print(creation_string)
         await self.client.execute_script(creation_string)
