@@ -394,7 +394,7 @@ class TestCase(TruncationTestCase):
     This is a fast test runner. Don't use it if your test uses transactions.
     """
 
-    connection_name: str = "moddels"
+    connection_name: str = "models"
 
     async def _run_outcome(self, outcome, expecting_failure, testMethod) -> None:
         _restore_default()
