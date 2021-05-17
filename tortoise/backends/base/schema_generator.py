@@ -1,9 +1,9 @@
-import json
 import logging
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Type
 
 from tortoise.exceptions import ConfigurationError
+from tortoise.fields import JSONField, TextField, UUIDField
 
 if TYPE_CHECKING:  # pragma: nocoverage
     from tortoise.backends.base.client import BaseDBAsyncClient
@@ -172,21 +172,34 @@ class BaseSchemaGenerator:
             fields=", ".join([self.quote(f) for f in field_names]),
         )
 
-    def _get_default(self, table_name, field_describe: dict):
-        default: str = field_describe.get("default")
+    def _get_default(self, table_name, field_describe: dict) -> Any:
+        default = field_describe.get("default")
         auto_now_add = field_describe.get("auto_now_add", False)
         auto_now = field_describe.get("auto_now", False)
         column_name = field_describe["db_column"]
         if default is not None or auto_now or auto_now_add:
-            if (isinstance(default, str) and default.startswith("<function ")) or field_describe[
-                "field_type"
-            ] in (
-                "UUIDField",
-                "TextField",
-                "JSONField",
+            if (
+                (isinstance(default, str) and default.startswith("<function "))
+                or field_describe["field_type"]
+                in (
+                    "UUIDField",
+                    "TextField",
+                    "JSONField",
+                )
+                or callable(default)
+                or isinstance(
+                    field_describe["field_type"],
+                    (
+                        UUIDField,
+                        TextField,
+                        JSONField,
+                    ),
+                )
             ):
                 default = ""
             else:
+                if field_describe["default_value"]:
+                    default = field_describe["default_value"]
                 try:
                     default = self._column_default_generator(
                         table_name,
@@ -202,7 +215,10 @@ class BaseSchemaGenerator:
 
         return default
 
-    def _get_table_sql(self, table_describe: dict, safe: bool = True) -> dict:
+    def _get_table_sql(self, model: "Type[Model]", safe: bool = True) -> dict:
+        return self._get_table_sql_v2(model.describe(), safe)
+
+    def _get_table_sql_v2(self, table_describe: dict, safe: bool = True) -> dict:
         fields_to_create = []
         fields_with_index = []
         m2m_tables_for_create = []
@@ -213,7 +229,7 @@ class BaseSchemaGenerator:
         models_tables = [i._meta.db_table for i in models_to_create]
         table_name = table_describe["table"]
 
-        def get_column_comment(column_name, description, table_name):
+        def get_column_comment(column_name, description, table_name) -> str:
             return (
                 self._column_comment_generator(
                     # db_table:str,
@@ -424,9 +440,7 @@ class BaseSchemaGenerator:
 
         tables_to_create = []
         for model in models_to_create:
-            tables_to_create.append(
-                self._get_table_sql(json.loads(json.dumps(model.describe())), safe)
-            )  # clear callable func
+            tables_to_create.append(self._get_table_sql(model, safe))  # clear callable func
         tables_to_create_count = len(tables_to_create)
 
         created_tables: Set[dict] = set()
