@@ -1368,7 +1368,7 @@ class Model(metaclass=ModelMeta):
         }
 
     @classmethod
-    def _describe_unique_together(cls):
+    def _describe_unique_together(cls) -> List[List[str]]:
         unique_together_source_field = []
         if cls._meta.unique_together:
             for unique_together_list in cls._meta.unique_together:
@@ -1382,7 +1382,7 @@ class Model(metaclass=ModelMeta):
         return unique_together_source_field
 
     @classmethod
-    def _describe_indexes(cls):
+    def _describe_indexes(cls) -> List[List[str]]:
         indexes_source_field = []
         if cls._meta.indexes:
             for indexes_list in cls._meta.indexes:
