@@ -340,7 +340,7 @@ class ForeignKeyFieldInstance(RelationalField):
         desc = super().describe(serializable)
         desc["raw_field"] = self.source_field
         desc["on_delete"] = self.on_delete
-        desc["reference_table"] = self.related_model._meta.db_table
+        desc["reference_table"] = self.related_model._meta.db_table if getattr(self,"related_model",None) else None
         desc["db_constraint"] = self.db_constraint
         return desc
 
