@@ -1332,8 +1332,8 @@ class Model(metaclass=ModelMeta):
             "abstract": cls._meta.abstract,
             "description": cls._meta.table_description or None,
             "docstring": inspect.cleandoc(cls.__doc__ or "") or None,
-            "unique_together": cls._meta.unique_together or [],
-            "indexes": cls._meta.indexes or [],
+            "unique_together": cls._describe_unique_together(),
+            "indexes": cls._describe_indexes(),
             "pk_field": cls._meta.fields_map[cls._meta.pk_attr].describe(serializable),
             "data_fields": [
                 field.describe(serializable)
@@ -1366,6 +1366,34 @@ class Model(metaclass=ModelMeta):
                 if name in cls._meta.m2m_fields
             ],
         }
+
+    @classmethod
+    def _describe_unique_together(cls) -> List[List[str]]:
+        unique_together_source_field = []
+        if cls._meta.unique_together:
+            for unique_together_list in cls._meta.unique_together:
+                unique_together_to_create = []
+
+                for field in unique_together_list:
+                    field_object = cls._meta.fields_map[field]
+                    unique_together_to_create.append(field_object.source_field or field)
+
+                unique_together_source_field.append(unique_together_to_create)
+        return unique_together_source_field
+
+    @classmethod
+    def _describe_indexes(cls) -> List[List[str]]:
+        indexes_source_field = []
+        if cls._meta.indexes:
+            for indexes_list in cls._meta.indexes:
+                indexes_to_create = []
+
+                for field in indexes_list:
+                    field_object = cls._meta.fields_map[field]
+                    indexes_to_create.append(field_object.source_field or field)
+
+                indexes_source_field.append(indexes_to_create)
+        return indexes_source_field
 
     def __await__(self: MODEL) -> Generator[Any, None, MODEL]:
         async def _self() -> MODEL:

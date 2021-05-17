@@ -353,6 +353,7 @@ class Field(metaclass=_FieldMeta):
             "unique": self.unique,
             "indexed": self.index or self.unique,
             "default": default_name(self.default) if serializable else self.default,
+            "default_value": self.to_db_value(self.default, self.model) if self.default else None,
             "description": self.description,
             "docstring": self.docstring,
             "constraints": self.constraints,
