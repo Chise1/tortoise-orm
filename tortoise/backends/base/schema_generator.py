@@ -1,6 +1,7 @@
 import logging
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Type, Iterable, Union, \
+    Tuple
 
 from tortoise.exceptions import ConfigurationError
 from tortoise.fields import JSONField, TextField, UUIDField
@@ -64,7 +65,8 @@ class BaseSchemaGenerator:
         comment: str,
     ) -> str:
         return self.FK_TEMPLATE.format(
-            db_column=db_column, table=table, field=field, on_delete=on_delete, comment=comment
+            db_column=db_column, table=table, field=field, on_delete=on_delete,
+            comment=comment
         )
 
     def _table_comment_generator(self, table: str, comment: str) -> str:
@@ -89,7 +91,8 @@ class BaseSchemaGenerator:
         # needs to be implemented for each supported client
         raise NotImplementedError()
 
-    def _column_comment_generator(self, table: str, column: str, comment: str) -> str:
+    def _column_comment_generator(self, table: str, column: str,
+                                  comment: str) -> str:
         # Databases have their own way of supporting comments for column level
         # needs to be implemented for each supported client
         raise NotImplementedError()  # pragma: nocoverage
@@ -133,7 +136,8 @@ class BaseSchemaGenerator:
         # Hash a set of string values and get a digest of the given length.
         return sha256(";".join(args).encode("utf-8")).hexdigest()[:length]
 
-    def _generate_index_name(self, prefix: str, table_name: str, field_names: List[str]) -> str:
+    def _generate_index_name(self, prefix: str, table_name: str,
+                             field_names: Union[List[str],Tuple[str,...]]) -> str:
         # NOTE: for compatibility, index name should not be longer than 30
         # characters (Oracle limit).
         # That's why we slice some of the strings here.
@@ -154,21 +158,26 @@ class BaseSchemaGenerator:
         index_name = "fk_{f}_{t}_{h}".format(
             f=from_table[:8],
             t=to_table[:8],
-            h=self._make_hash(from_table, from_field, to_table, to_field, length=8),
+            h=self._make_hash(from_table, from_field, to_table, to_field,
+                              length=8),
         )
         return index_name
 
-    def _get_index_sql(self, table_name: str, field_names: List[str], safe: bool) -> str:
+    def _get_index_sql(self, table_name: str, field_names: List[str],
+                       safe: bool) -> str:
         return self.INDEX_CREATE_TEMPLATE.format(
             exists="IF NOT EXISTS " if safe else "",
-            index_name=self._generate_index_name("idx", table_name, field_names),
+            index_name=self._generate_index_name("idx", table_name,
+                                                 field_names),
             table_name=table_name,
             fields=", ".join([self.quote(f) for f in field_names]),
         )
 
-    def _get_unique_constraint_sql(self, table_name: str, field_names: List[str]) -> str:
+    def _get_unique_constraint_sql(self, table_name: str,
+                                   field_names: List[str]) -> str:
         return self.UNIQUE_CONSTRAINT_CREATE_TEMPLATE.format(
-            index_name=self._generate_index_name("uid", table_name, field_names),
+            index_name=self._generate_index_name("uid", table_name,
+                                                 field_names),
             fields=", ".join([self.quote(f) for f in field_names]),
         )
 
@@ -182,19 +191,19 @@ class BaseSchemaGenerator:
                 (isinstance(default, str) and default.startswith("<function "))
                 or field_describe["field_type"]
                 in (
-                    "UUIDField",
-                    "TextField",
-                    "JSONField",
-                )
+                "UUIDField",
+                "TextField",
+                "JSONField",
+            )
                 or callable(default)
                 or isinstance(
-                    field_describe["field_type"],
-                    (
-                        UUIDField,
-                        TextField,
-                        JSONField,
-                    ),
-                )
+                field_describe["field_type"],
+                (
+                    UUIDField,
+                    TextField,
+                    JSONField,
+                ),
+            )
             ):
                 default = ""
             else:
@@ -218,7 +227,8 @@ class BaseSchemaGenerator:
     def _get_table_sql(self, model: "Type[Model]", safe: bool = True) -> dict:
         return self._get_table_sql_v2(model.describe(), safe)
 
-    def _get_table_sql_v2(self, table_describe: dict, safe: bool = True) -> dict:
+    def _get_table_sql_v2(self, table_describe: dict,
+                          safe: bool = True) -> dict:
         fields_to_create = []
         fields_with_index = []
         m2m_tables_for_create = []
@@ -258,7 +268,9 @@ class BaseSchemaGenerator:
             if generated_sql:  # pragma: nobranch
                 pk_name = pk_describle["name"]
                 pk_column_name = pk_describle["db_column"]
-                pk_comment = get_column_comment(pk_name, pk_describle["description"], table_name)
+                pk_comment = get_column_comment(pk_name,
+                                                pk_describle["description"],
+                                                table_name)
                 fields_to_create.append(
                     self.GENERATED_PK_TEMPLATE.format(
                         field_name=pk_column_name,
@@ -271,10 +283,13 @@ class BaseSchemaGenerator:
             data_fields.append(pk_describle)
         for field_describe in table_describe["data_fields"]:
             column_name = field_describe["db_column"]
-            comment = get_column_comment(column_name, field_describe["description"], table_name)
+            comment = get_column_comment(column_name,
+                                         field_describe["description"],
+                                         table_name)
             default = self._get_default(table_name, field_describe)
 
-            nullable = "NOT NULL" if not field_describe.get("nullable", "") else ""
+            nullable = "NOT NULL" if not field_describe.get("nullable",
+                                                            "") else ""
             unique = "UNIQUE" if field_describe.get("unique") else ""
 
             for fk_field in fk_fields:
@@ -295,22 +310,25 @@ class BaseSchemaGenerator:
                         comment="",
                         default=default,
                     ) + (
-                        self._create_fk_string(
-                            constraint_name=self._generate_fk_name(
-                                table_name,
-                                column_name,
-                                fk_field["reference_table"],
-                                to_field_name,
-                            ),
-                            db_column=column_name,
-                            table=fk_field["reference_table"],
-                            field=to_field_name,
-                            on_delete=fk_field["on_delete"],
-                            comment=comment,
-                        )
-                        if fk_field["db_constraint"]
-                        else ""
-                    )
+                                                self._create_fk_string(
+                                                    constraint_name=self._generate_fk_name(
+                                                        table_name,
+                                                        column_name,
+                                                        fk_field[
+                                                            "reference_table"],
+                                                        to_field_name,
+                                                    ),
+                                                    db_column=column_name,
+                                                    table=fk_field[
+                                                        "reference_table"],
+                                                    field=to_field_name,
+                                                    on_delete=fk_field[
+                                                        "on_delete"],
+                                                    comment=comment,
+                                                )
+                                                if fk_field["db_constraint"]
+                                                else ""
+                                            )
                     references.add(fk_field["reference_table"])
                     break
             else:
@@ -334,7 +352,8 @@ class BaseSchemaGenerator:
         if table_describe["unique_together"]:
             for unique_together_to_create in table_describe["unique_together"]:
                 fields_to_create.append(
-                    self._get_unique_constraint_sql(table_name, unique_together_to_create)
+                    self._get_unique_constraint_sql(table_name,
+                                                    unique_together_to_create)
                 )
 
         # Indexes.
@@ -345,15 +364,20 @@ class BaseSchemaGenerator:
 
         if table_describe["indexes"]:
             for indexes_to_create in table_describe["indexes"]:
-                _indexes.append(self._get_index_sql(table_name, indexes_to_create, safe=safe))
+                _indexes.append(
+                    self._get_index_sql(table_name, indexes_to_create,
+                                        safe=safe))
 
-        field_indexes_sqls = [val for val in list(dict.fromkeys(_indexes)) if val]
+        field_indexes_sqls = [val for val in list(dict.fromkeys(_indexes)) if
+                              val]
 
         fields_to_create.extend(self._get_inner_statements())
 
-        table_fields_string = "\n    {}\n".format(",\n    ".join(fields_to_create))
+        table_fields_string = "\n    {}\n".format(
+            ",\n    ".join(fields_to_create))
         table_comment = (
-            self._table_comment_generator(table=table_name, comment=table_describe["description"])
+            self._table_comment_generator(table=table_name,
+                                          comment=table_describe["description"])
             if table_describe["description"]
             else ""
         )
@@ -366,7 +390,8 @@ class BaseSchemaGenerator:
             extra=self._table_generate_extra(table=table_name),
         )
 
-        table_create_string = "\n".join([table_create_string, *field_indexes_sqls])
+        table_create_string = "\n".join(
+            [table_create_string, *field_indexes_sqls])
 
         table_create_string += self._post_table_hook()
 
@@ -424,7 +449,8 @@ class BaseSchemaGenerator:
             "m2m_tables": m2m_tables_for_create,
         }
 
-    def _get_models_to_create(self, models_to_create: "List[Type[Model]]") -> None:
+    def _get_models_to_create(self,
+                              models_to_create: "List[Type[Model]]") -> None:
         from tortoise import Tortoise
 
         for app in Tortoise.apps.values():
@@ -440,7 +466,8 @@ class BaseSchemaGenerator:
 
         tables_to_create = []
         for model in models_to_create:
-            tables_to_create.append(self._get_table_sql(model, safe))  # clear callable func
+            tables_to_create.append(
+                self._get_table_sql(model, safe))  # clear callable func
         tables_to_create_count = len(tables_to_create)
 
         created_tables: Set[dict] = set()
@@ -456,13 +483,16 @@ class BaseSchemaGenerator:
                     if t["references"].issubset(created_tables | {t["table"]})
                 )
             except StopIteration:
-                raise ConfigurationError("Can't create schema due to cyclic fk references")
+                raise ConfigurationError(
+                    "Can't create schema due to cyclic fk references")
             tables_to_create.remove(next_table_for_create)
             created_tables.add(next_table_for_create["table"])
-            ordered_tables_for_create.append(next_table_for_create["table_creation_string"])
+            ordered_tables_for_create.append(
+                next_table_for_create["table_creation_string"])
             m2m_tables_to_create += next_table_for_create["m2m_tables"]
 
-        schema_creation_string = "\n".join(ordered_tables_for_create + m2m_tables_to_create)
+        schema_creation_string = "\n".join(
+            ordered_tables_for_create + m2m_tables_to_create)
         return schema_creation_string
 
     async def generate_from_string(self, creation_string: str) -> None:
