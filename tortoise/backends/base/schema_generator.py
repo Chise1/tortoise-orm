@@ -1,6 +1,6 @@
 import logging
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Type, Union
 
 from tortoise.exceptions import ConfigurationError
 from tortoise.fields import JSONField, TextField, UUIDField
@@ -226,6 +226,7 @@ class BaseSchemaGenerator:
         m2m_tables_for_create = []
         references = set()
         models_to_create: "List[Type[Model]]" = []
+        uniqued_d = {}
 
         self._get_models_to_create(models_to_create)
         models_tables = [i._meta.db_table for i in models_to_create]
@@ -234,7 +235,6 @@ class BaseSchemaGenerator:
         def get_column_comment(column_name, description, table_name) -> str:
             return (
                 self._column_comment_generator(
-                    # db_table:str,
                     table=table_name,
                     column=column_name,
                     comment=description,
@@ -330,7 +330,11 @@ class BaseSchemaGenerator:
 
             fields_to_create.append(field_creation_string)
 
-            if field_describe["indexed"] and not field_describe.get("is_pk"):
+            if (
+                field_describe["indexed"]
+                and not field_describe.get("is_pk")
+                and not field_describe.get("unique")
+            ):
                 fields_with_index.append(column_name)
 
         if table_describe["unique_together"]:
