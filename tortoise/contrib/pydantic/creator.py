@@ -78,7 +78,6 @@ def _pydantic_recursion_protector(
     name=None,
     allow_cycles: bool = False,
     sort_alphabetically: Optional[bool] = None,
-    depth: int = 1,
 ) -> Optional[Type[PydanticModel]]:
     """
     It is an inner function to protect pydantic model creator against cyclic recursion
@@ -112,7 +111,6 @@ def _pydantic_recursion_protector(
         _stack=stack,
         allow_cycles=allow_cycles,
         sort_alphabetically=sort_alphabetically,
-        depth=depth,
     )
 
 
@@ -128,7 +126,6 @@ def pydantic_model_creator(
     _stack: tuple = (),
     exclude_readonly: bool = False,
     meta_override: Optional[Type] = None,
-    depth: int = -1,
 ) -> Type[PydanticModel]:
     """
     Function to build `Pydantic Model <https://pydantic-docs.helpmanual.io/usage/models/>`__ off Tortoise Model.
@@ -252,10 +249,10 @@ def pydantic_model_creator(
                 field_map[n] = fd
 
     # Update field definitions from description
-    if not exclude_readonly and depth != 0:
+    if not exclude_readonly:
         field_map_update(("pk_field",), is_relation=False)
     field_map_update(("data_fields",), is_relation=False)
-    if not exclude_readonly and depth != 0:
+    if not exclude_readonly:
         included_fields: tuple = (
             "fk_fields",
             "o2o_fields",
@@ -315,11 +312,9 @@ def pydantic_model_creator(
                     computed=tuple(
                         str(v[prefix_len:]) for v in computed if v.startswith(fname + ".")
                     ),
-                    name=f"{name or fqname}.{fname}",
                     stack=new_stack,
                     allow_cycles=_allow_cycles,
                     sort_alphabetically=sort_alphabetically,
-                    depth=depth - 1,
                 )
             else:
                 pmodel = None
@@ -378,10 +373,7 @@ def pydantic_model_creator(
                 fconfig["nullable"] = True
             if fdesc.get("nullable") or field_default is not None:
                 ptype = Optional[ptype]
-            if (
-                not (exclude_readonly and fdesc["constraints"].get("readOnly") is True)
-                and depth != 0
-            ):
+            if not (exclude_readonly and fdesc["constraints"].get("readOnly") is True):
                 pannotations[fname] = annotation or ptype
 
         # Create a schema for the field
@@ -427,7 +419,6 @@ def pydantic_queryset_creator(
     computed: Tuple[str, ...] = (),
     allow_cycles: Optional[bool] = None,
     sort_alphabetically: Optional[bool] = None,
-    depth: int = -1,
 ) -> Type[PydanticListModel]:
     """
     Function to build a `Pydantic Model <https://pydantic-docs.helpmanual.io/usage/models/>`__ list off Tortoise Model.
@@ -461,7 +452,6 @@ def pydantic_queryset_creator(
         allow_cycles=allow_cycles,
         sort_alphabetically=sort_alphabetically,
         name=name,
-        depth=depth,
     )
     lname = name or f"{submodel.__name__}_list"
 
