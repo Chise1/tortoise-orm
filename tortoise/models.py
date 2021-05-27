@@ -1384,7 +1384,7 @@ class Model(metaclass=ModelMeta):
     @classmethod
     def _describe_indexes(cls) -> List[List[str]]:
         indexes_source_field = []
-        if cls._meta.indexes:
+        if cls._meta.indexes:  # todo:解决Index类实例
             for indexes_list in cls._meta.indexes:
                 indexes_to_create = []
 
