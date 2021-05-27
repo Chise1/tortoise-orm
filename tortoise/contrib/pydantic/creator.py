@@ -315,7 +315,7 @@ def pydantic_model_creator(
                     computed=tuple(
                         str(v[prefix_len:]) for v in computed if v.startswith(fname + ".")
                     ),
-                    name = f"{name or fqname}.{fname}",
+                    name=f"{name or fqname}.{fname}",
                     stack=new_stack,
                     allow_cycles=_allow_cycles,
                     sort_alphabetically=sort_alphabetically,

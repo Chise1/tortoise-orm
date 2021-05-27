@@ -336,6 +336,8 @@ class Field(metaclass=_FieldMeta):
                     return str(typ)
 
         def default_name(default: Any) -> Optional[Union[int, float, str, bool]]:
+            if isinstance(default, Enum):
+                return default.value
             if isinstance(default, (int, float, str, bool, type(None))):
                 return default
             if callable(default):
@@ -355,7 +357,7 @@ class Field(metaclass=_FieldMeta):
             "default": default_name(self.default) if serializable else self.default,
             "default_value": default_name(self.default())
             if callable(self.default)
-            else self.default,
+            else default_name(self.default),
             "description": self.description,
             "docstring": self.docstring,
             "constraints": self.constraints,
