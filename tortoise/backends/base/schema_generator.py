@@ -449,3 +449,46 @@ class BaseSchemaGenerator:
     async def generate_from_string(self, creation_string: str) -> None:
         # print(creation_string)
         await self.client.execute_script(creation_string)
+
+    def _get_default(self, table_name, field_describe: dict) -> Any:
+        default = field_describe.get("default")
+        auto_now_add = field_describe.get("auto_now_add", False)
+        auto_now = field_describe.get("auto_now", False)
+        column_name = field_describe["db_column"]
+        if default is not None or auto_now or auto_now_add:
+            if (
+                (isinstance(default, str) and default.startswith("<function "))
+                or field_describe["field_type"]
+                in (
+                    "UUIDField",
+                    "TextField",
+                    "JSONField",
+                )
+                or callable(default)
+                or isinstance(
+                    field_describe["field_type"],
+                    (
+                        UUIDField,
+                        TextField,
+                        JSONField,
+                    ),
+                )
+            ):
+                default = ""
+            else:
+                if field_describe["default_value"]:
+                    default = field_describe["default_value"]
+                try:
+                    default = self._column_default_generator(
+                        table_name,
+                        column_name,
+                        self._escape_default_value(default),
+                        auto_now_add,
+                        auto_now,
+                    )
+                except NotImplementedError:
+                    default = ""
+        else:
+            default = ""
+
+        return default
