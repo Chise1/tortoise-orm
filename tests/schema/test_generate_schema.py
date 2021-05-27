@@ -142,9 +142,9 @@ class TestGenerateSchema(test.SimpleTestCase):
         self.assertEqual(
             sql.strip(),
             r"""CREATE TABLE "team" (
-    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */,
     "key" INT NOT NULL,
-    "manager_id" VARCHAR(50)
+    "manager_id" VARCHAR(50),
+    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */
 ) /* The TEAMS! */;
 CREATE INDEX "idx_team_manager_676134" ON "team" ("manager_id", "key");
 CREATE INDEX "idx_team_manager_ef8f69" ON "team" ("manager_id", "name");
@@ -211,9 +211,9 @@ CREATE TABLE "sometable" (
 );
 CREATE INDEX "idx_sometable_some_ch_3d69eb" ON "sometable" ("some_chars_table");
 CREATE TABLE "team" (
-    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */,
     "key" INT NOT NULL,
-    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE
+    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE,
+    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */
 ) /* The TEAMS! */;
 CREATE INDEX "idx_team_manager_676134" ON "team" ("manager_id", "key");
 CREATE INDEX "idx_team_manager_ef8f69" ON "team" ("manager_id", "name");
@@ -298,9 +298,9 @@ CREATE TABLE IF NOT EXISTS "sometable" (
 );
 CREATE INDEX IF NOT EXISTS "idx_sometable_some_ch_3d69eb" ON "sometable" ("some_chars_table");
 CREATE TABLE IF NOT EXISTS "team" (
-    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */,
     "key" INT NOT NULL,
-    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE
+    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE,
+    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */
 ) /* The TEAMS! */;
 CREATE INDEX IF NOT EXISTS "idx_team_manager_676134" ON "team" ("manager_id", "key");
 CREATE INDEX IF NOT EXISTS "idx_team_manager_ef8f69" ON "team" ("manager_id", "name");
@@ -313,8 +313,8 @@ CREATE TABLE IF NOT EXISTS "teamaddress" (
 CREATE TABLE IF NOT EXISTS "tournament" (
     "tid" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     "name" VARCHAR(100) NOT NULL  /* Tournament name */,
-    "created" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP /* Created *\\/'`\\/* datetime */
-) /* What Tournaments *\\/'`\\/* we have */;
+    "created" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP /* Created *\/'`\/* datetime */
+) /* What Tournaments *\/'`\/* we have */;
 CREATE INDEX IF NOT EXISTS "idx_tournament_name_6fe200" ON "tournament" ("name");
 CREATE TABLE IF NOT EXISTS "event" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL /* Event ID */,
@@ -356,9 +356,9 @@ CREATE TABLE IF NOT EXISTS "teamevents" (
         self.assertEqual(
             sql.strip(),
             r"""CREATE TABLE "team" (
-    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */,
     "key" INT NOT NULL,
-    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE
+    "manager_id" VARCHAR(50) REFERENCES "team" ("name") ON DELETE CASCADE,
+    "name" VARCHAR(50) NOT NULL  PRIMARY KEY /* The TEAM name (and PK) */
 ) /* The TEAMS! */;
 CREATE INDEX "idx_team_manager_676134" ON "team" ("manager_id", "key");
 CREATE INDEX "idx_team_manager_ef8f69" ON "team" ("manager_id", "name");
@@ -463,9 +463,9 @@ class TestGenerateSchemaMySQL(TestGenerateSchema):
         self.assertEqual(
             sql.strip(),
             r"""CREATE TABLE `team` (
-    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     `key` INT NOT NULL,
     `manager_id` VARCHAR(50),
+    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     KEY `idx_team_manager_676134` (`manager_id`, `key`),
     KEY `idx_team_manager_ef8f69` (`manager_id`, `name`)
 ) CHARACTER SET utf8mb4 COMMENT='The TEAMS!';
@@ -534,9 +534,9 @@ CREATE TABLE `sometable` (
     KEY `idx_sometable_some_ch_3d69eb` (`some_chars_table`)
 ) CHARACTER SET utf8mb4;
 CREATE TABLE `team` (
-    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     `key` INT NOT NULL,
     `manager_id` VARCHAR(50),
+    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     CONSTRAINT `fk_team_team_9c77cd8f` FOREIGN KEY (`manager_id`) REFERENCES `team` (`name`) ON DELETE CASCADE,
     KEY `idx_team_manager_676134` (`manager_id`, `key`),
     KEY `idx_team_manager_ef8f69` (`manager_id`, `name`)
@@ -634,9 +634,9 @@ CREATE TABLE IF NOT EXISTS `sometable` (
     KEY `idx_sometable_some_ch_3d69eb` (`some_chars_table`)
 ) CHARACTER SET utf8mb4;
 CREATE TABLE IF NOT EXISTS `team` (
-    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     `key` INT NOT NULL,
     `manager_id` VARCHAR(50),
+    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     CONSTRAINT `fk_team_team_9c77cd8f` FOREIGN KEY (`manager_id`) REFERENCES `team` (`name`) ON DELETE CASCADE,
     KEY `idx_team_manager_676134` (`manager_id`, `key`),
     KEY `idx_team_manager_ef8f69` (`manager_id`, `name`)
@@ -716,9 +716,9 @@ CREATE SPATIAL INDEX `idx_index_geometr_0b4dfb` ON `index` (`geometry`);""",
         self.assertEqual(
             sql.strip(),
             r"""CREATE TABLE `team` (
-    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     `key` INT NOT NULL,
     `manager_id` VARCHAR(50),
+    `name` VARCHAR(50) NOT NULL  PRIMARY KEY COMMENT 'The TEAM name (and PK)',
     CONSTRAINT `fk_team_team_9c77cd8f` FOREIGN KEY (`manager_id`) REFERENCES `team` (`name`) ON DELETE CASCADE,
     KEY `idx_team_manager_676134` (`manager_id`, `key`),
     KEY `idx_team_manager_ef8f69` (`manager_id`, `name`)
