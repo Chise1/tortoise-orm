@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Any, List, Type
+from typing import TYPE_CHECKING, Any, List
 
 from tortoise.backends.base.schema_generator import BaseSchemaGenerator
 from tortoise.converters import encoders
 
 if TYPE_CHECKING:  # pragma: nocoverage
     from tortoise.backends.mysql.client import MySQLClient
-    from tortoise.models import Model
 
 
 class MySQLSchemaGenerator(BaseSchemaGenerator):
@@ -68,13 +67,13 @@ class MySQLSchemaGenerator(BaseSchemaGenerator):
     def _escape_default_value(self, default: Any):
         return encoders.get(type(default))(default)  # type: ignore
 
-    def _get_index_sql(self, model: "Type[Model]", field_names: List[str], safe: bool) -> str:
+    def _get_index_sql(self, table_name, field_names: List[str], safe: bool) -> str:
         """ Get index SQLs, but keep them for ourselves """
         self._field_indexes.append(
             self.INDEX_CREATE_TEMPLATE.format(
                 exists="IF NOT EXISTS " if safe else "",
-                index_name=self._generate_index_name("idx", model, field_names),
-                table_name=model._meta.db_table,
+                index_name=self._generate_index_name("idx", table_name, field_names),
+                table_name=table_name,
                 fields=", ".join([self.quote(f) for f in field_names]),
             )
         )

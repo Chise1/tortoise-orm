@@ -43,7 +43,10 @@ class Index:
             return self.INDEX_CREATE_TEMPLATE.format(
                 exists="IF NOT EXISTS " if safe else "",
                 index_name=schema_generator.quote(
-                    self.name or schema_generator._generate_index_name("idx", model, self.fields)
+                    self.name
+                    or schema_generator._generate_index_name(
+                        "idx", model._meta.db_table, self.fields
+                    )
                 ),
                 index_type=f" {self.INDEX_TYPE} ",
                 table_name=schema_generator.quote(model._meta.db_table),
@@ -55,7 +58,10 @@ class Index:
             return self.INDEX_CREATE_TEMPLATE.format(
                 exists="IF NOT EXISTS " if safe else "",
                 index_name=schema_generator.quote(
-                    self.name or schema_generator._generate_index_name("idx", model, expressions)
+                    self.name
+                    or schema_generator._generate_index_name(
+                        "idx", model._meta.db_table, expressions
+                    )
                 ),
                 index_type=f" {self.INDEX_TYPE} ",
                 table_name=schema_generator.quote(model._meta.db_table),

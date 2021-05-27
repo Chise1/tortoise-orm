@@ -300,6 +300,7 @@ class Field(metaclass=_FieldMeta):
                     "default":      ...     # The default value (coerced to int/float/str/bool/null)
                     "description":  str     # Description of the field (nullable)
                     "docstring":    str     # Field docstring (nullable)
+                    "generated_sql": dict   # Field generated_sql info
                 }
 
             When ``serializable=False`` is specified some fields are not coerced to valid
@@ -352,9 +353,17 @@ class Field(metaclass=_FieldMeta):
             "unique": self.unique,
             "indexed": self.index or self.unique,
             "default": default_name(self.default) if serializable else self.default,
+            "default_value": default_name(self.default())
+            if callable(self.default)
+            else self.default,
             "description": self.description,
             "docstring": self.docstring,
             "constraints": self.constraints,
+            "generated_sql": {
+                "mysql": self.get_for_dialect("mysql", "GENERATED_SQL"),
+                "sqlite": self.get_for_dialect("sqlite", "GENERATED_SQL"),
+                "asyncpg": self.get_for_dialect("asyncpg", "GENERATED_SQL"),
+            },
         }
 
         if self.has_db_field:

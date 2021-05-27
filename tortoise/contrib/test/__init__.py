@@ -393,11 +393,12 @@ class TestCase(TruncationTestCase):
 
     This is a fast test runner. Don't use it if your test uses transactions.
     """
-    model_name:str= "models"
+
+    using_db: str = "models"
 
     async def _run_outcome(self, outcome, expecting_failure, testMethod) -> None:
         _restore_default()
-        self.__db__ = Tortoise.get_connection(self.model_name)
+        self.__db__ = Tortoise.get_connection(self.using_db)
         if self.__db__.capabilities.supports_transactions:
             connection = self.__db__._in_transaction().connection
             async with TransactionTestContext(connection):
