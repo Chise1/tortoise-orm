@@ -357,7 +357,7 @@ class Field(metaclass=_FieldMeta):
             "default": default_name(self.default) if serializable else self.default,
             "default_value": default_name(self.default())
             if callable(self.default)
-            else default_name(self.default),
+            else default_name(self.default),  # fixme:需要解决一下用self._get_default_value
             "description": self.description,
             "docstring": self.docstring,
             "constraints": self.constraints,
@@ -372,3 +372,12 @@ class Field(metaclass=_FieldMeta):
             desc["db_field_types"] = self.get_db_field_types()
 
         return desc
+
+    def _get_default_value(self):  # fixme:考虑默认值的问题！
+        if isinstance(self.default, Enum):
+            return self.default.value
+        if isinstance(self.default, (int, float, str, bool, type(None))):
+            return self.default
+        if callable(self.default):
+            return self.default()
+        return str(self.default)
