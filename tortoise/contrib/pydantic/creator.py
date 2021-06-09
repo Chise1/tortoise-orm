@@ -315,6 +315,7 @@ def pydantic_model_creator(
                     stack=new_stack,
                     allow_cycles=_allow_cycles,
                     sort_alphabetically=sort_alphabetically,
+                    name=f"{name or fqname}.{fname}",
                 )
             else:
                 pmodel = None
