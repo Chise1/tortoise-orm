@@ -344,7 +344,7 @@ class ForeignKeyFieldInstance(RelationalField):
         desc["db_constraint"] = self.db_constraint
         desc["to_field_name"] = (
             self.related_model._meta.db_pk_column
-            if self.to_field == self.related_model._meta.pk_attr
+            if self.related_model is not None and self.to_field == self.related_model._meta.pk_attr
             else self.to_field
         )
         return desc
