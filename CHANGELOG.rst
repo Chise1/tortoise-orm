@@ -9,9 +9,14 @@ Changelog
 
 0.17
 ====
+0.17.5
+------
+- Set `field_type` of fk and o2o same to which relation field type. (#443)
+
 0.17.4
 ------
 - Fix `update_or_create`. (#782)
+- Add `contains`, `contained_by` and `filter` to `JSONField`
 
 0.17.3
 ------
